@@ -10,8 +10,8 @@ jobs:
         steps:
             - name: "install node"
               run: |
-                    sudo apt-get update
-                    sudo apt-get install -y nodejs npm
+                    actions/setup-node@v4
+                    
             - name : "checkout code"
               uses: actions/checkout@v2
 
