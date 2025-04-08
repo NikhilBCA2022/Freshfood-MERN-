@@ -3,6 +3,7 @@ name: "Deploy code on EC2 instance"
 on:
   workflow_dispatch
 
+  
 jobs:
   deploy:
     runs-on: self-hosted
