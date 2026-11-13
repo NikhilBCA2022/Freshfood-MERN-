@@ -1,0 +1,55 @@
+name: Freshfood Terraform Validation
+
+on:
+  workflow_call:
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform-validation:
+    name: Terraform Format and Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive terraform
+
+      # ==========================================
+      # MAIN INFRASTRUCTURE
+      # ==========================================
+
+      - name: Initialize Main Terraform
+        run: terraform init -backend=false -input=false
+        working-directory: terraform
+
+      - name: Validate Main Terraform
+        run: terraform validate
+        working-directory: terraform
+
+      # ==========================================
+      # CLUSTER ADDONS
+      # ==========================================
+
+      - name: Initialize Cluster Addons
+        run: terraform init -backend=false -input=false
+        working-directory: terraform/cluster-addons
+
+      - name: Validate Cluster Addons
+        run: terraform validate
+        working-directory: terraform/cluster-addons
+
+      - name: Terraform Validation Summary
+        run: echo "All Terraform formatting and validation checks passed."

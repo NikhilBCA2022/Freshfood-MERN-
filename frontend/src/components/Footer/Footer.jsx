@@ -1,14 +1,12 @@
-import React from 'react'
 import './Footer.css'
 import { assets } from '../../assets/assets'
-
 const Footer = () => {
   return (
     <div className='footer' id='footer'>
       <div className="footer-content">
         <div className="footer-content-left">
             <img src={assets.logo} alt="" className='logofooter' />
-            <p>Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.</p>
+            <p>Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry&apos;s standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book.</p>
             <div className="footer-social-icons">
                 <a href='https://www.youtube.com/'><img src={assets.facebook_icon} alt="" /></a>
                 <img src={assets.twitter_icon} alt="" />
@@ -37,5 +35,4 @@ const Footer = () => {
     </div>
   )
 }
-
 export default Footer

@@ -1,7 +1,9 @@
 import orderModel from "../models/orderModel.js";
 import userModel from "../models/userModel.js"
 import Stripe from "stripe";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = process.env.STRIPE_SECRET_KEY
+    ? new Stripe(process.env.STRIPE_SECRET_KEY)
+    : null;
 
 //config variables
 const currency = "inr";
@@ -12,6 +14,13 @@ const frontend_URL = 'http://localhost:5173';
 const placeOrder = async (req, res) => {
 
     try {
+
+        if (!stripe) {
+    return res.status(503).json({
+        success: false,
+        message: "Online payments are currently unavailable. Please use Cash on Delivery."
+    });
+}
         const newOrder = new orderModel({
             userId: req.body.userId,
             items: req.body.items,

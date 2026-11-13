@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freshfood-backend
+  namespace: freshfood
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: freshfood-backend
+
+  template:
+    metadata:
+      labels:
+        app: freshfood-backend
+
+    spec:
+      serviceAccountName: freshfood-backend
+
+      containers:
+        - name: backend
+          image: REPLACE_WITH_BACKEND_ECR_IMAGE
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 4000
+
+          env:
+            - name: PORT
+              value: "4000"
+
+          envFrom:
+            - secretRef:
+                name: freshfood-backend-secrets
+
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: freshfood-backend-secrets

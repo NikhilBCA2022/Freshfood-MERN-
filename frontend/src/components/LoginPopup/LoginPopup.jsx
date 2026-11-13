@@ -1,4 +1,5 @@
-import React, { useContext, useState } from 'react'
+import { useContext, useState } from 'react'
+import PropTypes from 'prop-types'
 import './LoginPopup.css'
 import { assets } from '../../assets/assets'
 import { StoreContext } from '../../Context/StoreContext'
@@ -7,8 +8,8 @@ import { toast } from 'react-toastify'
 
 const LoginPopup = ({ setShowLogin }) => {
 
-    const { setToken, url,loadCartData } = useContext(StoreContext)
-    const [currState, setCurrState] = useState("Sign Up");
+    const { setToken, url, loadCartData } = useContext(StoreContext)
+    const [currState, setCurrState] = useState("Sign Up")
 
     const [data, setData] = useState({
         name: "",
@@ -25,18 +26,18 @@ const LoginPopup = ({ setShowLogin }) => {
     const onLogin = async (e) => {
         e.preventDefault()
 
-        let new_url = url;
+        let new_url = url
         if (currState === "Login") {
-            new_url += "/api/user/login";
+            new_url += "/api/user/login"
         }
         else {
             new_url += "/api/user/register"
         }
-        const response = await axios.post(new_url, data);
+        const response = await axios.post(new_url, data)
         if (response.data.success) {
             setToken(response.data.token)
             localStorage.setItem("token", response.data.token)
-            loadCartData({token:response.data.token})
+            loadCartData({ token: response.data.token })
             setShowLogin(false)
         }
         else {
@@ -57,7 +58,7 @@ const LoginPopup = ({ setShowLogin }) => {
                 </div>
                 <button>{currState === "Login" ? "Login" : "Create account"}</button>
                 <div className="login-popup-condition">
-                    <input type="checkbox" name="" id="" required/>
+                    <input type="checkbox" name="" id="" required />
                     <p>By continuing, i agree to the terms of use & privacy policy.</p>
                 </div>
                 {currState === "Login"
@@ -67,6 +68,10 @@ const LoginPopup = ({ setShowLogin }) => {
             </form>
         </div>
     )
+}
+
+LoginPopup.propTypes = {
+    setShowLogin: PropTypes.func.isRequired,
 }
 
 export default LoginPopup

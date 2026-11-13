@@ -1,31 +1,322 @@
-name: "Deploy code on EC2 instance"
+name: Freshfood MERN CI-CD Pipeline
 
 on:
-  workflow_dispatch
+  push:
+    branches:
+      - master
 
+  pull_request:
+    branches:
+      - master
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: freshfood-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # ==========================================
+  # 1. TERRAFORM VALIDATION
+  # ==========================================
+
+  terraform:
+    name: Terraform Validation
+
+    uses: ./.github/workflows/terraform.yml
+
+    permissions:
+      contents: read
+
+  # ==========================================
+  # 2. SECURITY CHECKS
+  # ==========================================
+
+  security-checks:
+    name: DevSecOps Security Checks
+
+    uses: ./.github/workflows/security-checks.yml
+
+    permissions:
+      contents: read
+      security-events: write
+
+  # ==========================================
+  # 3. DEPLOYMENT
+  # ==========================================
+
   deploy:
-    runs-on: self-hosted
+    name: Deploy Freshfood to AWS EKS
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - terraform
+      - security-checks
+
+    # Deploy only from master, never from pull requests.
+    if: >
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/master'
+
+    environment: production
+
+    env:
+      AWS_REGION: ap-south-1
+      CLUSTER_NAME: freshfood-eks
+      NAMESPACE: freshfood
 
     steps:
-      - name: "Install Node.js"
-        uses: actions/setup-node@v4
+      # ==========================================
+      # CHECKOUT
+      # ==========================================
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
-          node-version: '18' # or any version you want
+          persist-credentials: false
 
-      - name: "Checkout code"
-        uses: actions/checkout@v2
+      # ==========================================
+      # AWS AUTHENTICATION
+      # ==========================================
 
-      - name: "Install dependencies"
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ==========================================
+      # VERIFY AWS IDENTITY
+      # ==========================================
+
+      - name: Verify AWS Identity
         run: |
-          cd frontend   # or whatever the correct folder is
-          npm install
-      
-      - name: "Install PM2 globally"
-        run: npm install -g pm2
-          
+          set -euo pipefail
+          aws sts get-caller-identity
 
-      - name: "Start app with PM2"
+      # ==========================================
+      # GET AWS ACCOUNT ID
+      # ==========================================
+
+      - name: Get AWS Account ID
+        id: aws-account
         run: |
-          pm2 start src/app.jsx --name freshfood-app
+          set -euo pipefail
+
+          ACCOUNT_ID=$(aws sts get-caller-identity \
+            --query Account \
+            --output text)
+
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+
+          echo "AWS Account: $ACCOUNT_ID"
+
+      # ==========================================
+      # LOGIN TO ECR
+      # ==========================================
+
+      - name: Login to Amazon ECR
+        run: |
+          set -euo pipefail
+
+          REGISTRY="${{ steps.aws-account.outputs.account_id }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          aws ecr get-login-password \
+            --region "$AWS_REGION" \
+          | docker login \
+            --username AWS \
+            --password-stdin \
+            "$REGISTRY"
+
+      # ==========================================
+      # BUILD AND PUSH FRONTEND
+      # ==========================================
+
+      - name: Build and Push Frontend
+        run: |
+          set -euo pipefail
+
+          IMAGE="${{ steps.aws-account.outputs.account_id }}.dkr.ecr.${AWS_REGION}.amazonaws.com/freshfood/frontend:${GITHUB_SHA}"
+
+          docker build --pull \
+            -f frontend/Dockerfile \
+            -t "$IMAGE" \
+            frontend
+
+          docker push "$IMAGE"
+
+      # ==========================================
+      # BUILD AND PUSH ADMIN
+      # ==========================================
+
+      - name: Build and Push Admin
+        run: |
+          set -euo pipefail
+
+          IMAGE="${{ steps.aws-account.outputs.account_id }}.dkr.ecr.${AWS_REGION}.amazonaws.com/freshfood/admin:${GITHUB_SHA}"
+
+          docker build --pull \
+            -f admin/Dockerfile \
+            -t "$IMAGE" \
+            admin
+
+          docker push "$IMAGE"
+
+      # ==========================================
+      # BUILD AND PUSH BACKEND
+      # ==========================================
+
+      - name: Build and Push Backend
+        run: |
+          set -euo pipefail
+
+          IMAGE="${{ steps.aws-account.outputs.account_id }}.dkr.ecr.${AWS_REGION}.amazonaws.com/freshfood/backend:${GITHUB_SHA}"
+
+          docker build --pull \
+            -f backend/Dockerfile \
+            -t "$IMAGE" \
+            backend
+
+          docker push "$IMAGE"
+
+      # ==========================================
+      # CONFIGURE EKS
+      # ==========================================
+
+      - name: Configure kubectl
+        run: |
+          set -euo pipefail
+
+          aws eks update-kubeconfig \
+            --region "$AWS_REGION" \
+            --name "$CLUSTER_NAME"
+
+      # ==========================================
+      # VERIFY NAMESPACE ACCESS
+      # ==========================================
+
+      - name: Verify Freshfood Namespace Access
+        run: |
+          set -euo pipefail
+
+          echo "Checking access to namespace: $NAMESPACE"
+
+          kubectl get pods -n "$NAMESPACE"
+
+      # ==========================================
+      # VERIFY BACKEND IRSA CONFIGURATION
+      # ==========================================
+
+      - name: Verify Backend IAM Role
+        env:
+          BACKEND_IAM_ROLE_ARN: ${{ vars.BACKEND_IAM_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$BACKEND_IAM_ROLE_ARN" ]; then
+            echo "BACKEND_IAM_ROLE_ARN GitHub variable is missing."
+            exit 1
+          fi
+
+          echo "Backend IRSA role configuration found."
+
+      # ==========================================
+      # UPDATE KUBERNETES IMAGE REFERENCES
+      # ==========================================
+
+      - name: Update Kubernetes Manifests
+        env:
+          ACCOUNT_ID: ${{ steps.aws-account.outputs.account_id }}
+          BACKEND_IAM_ROLE_ARN: ${{ vars.BACKEND_IAM_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          sed -i \
+            "s|REPLACE_WITH_FRONTEND_ECR_IMAGE|${REGISTRY}/freshfood/frontend:${GITHUB_SHA}|g" \
+            k8s/frontend-deployment.yaml
+
+          sed -i \
+            "s|REPLACE_WITH_ADMIN_ECR_IMAGE|${REGISTRY}/freshfood/admin:${GITHUB_SHA}|g" \
+            k8s/admin-deployment.yaml
+
+          sed -i \
+            "s|REPLACE_WITH_BACKEND_ECR_IMAGE|${REGISTRY}/freshfood/backend:${GITHUB_SHA}|g" \
+            k8s/backend-deployment.yaml
+
+          sed -i \
+            "s|REPLACE_WITH_TERRAFORM_BACKEND_IAM_ROLE_ARN|${BACKEND_IAM_ROLE_ARN}|g" \
+            k8s/serviceaccount.yaml
+
+      # ==========================================
+      # APPLY KUBERNETES CONFIGURATION
+      # ==========================================
+
+      - name: Apply Backend Service Account
+        run: |
+          kubectl apply \
+            -n "$NAMESPACE" \
+            -f k8s/serviceaccount.yaml
+
+      - name: Apply Backend Secret Provider
+        run: |
+          kubectl apply \
+            -n "$NAMESPACE" \
+            -f k8s/backend-secret-provider.yaml
+
+      - name: Apply Kubernetes Services
+        run: |
+          kubectl apply -n "$NAMESPACE" -f k8s/backend-service.yaml
+          kubectl apply -n "$NAMESPACE" -f k8s/frontend-service.yaml
+          kubectl apply -n "$NAMESPACE" -f k8s/admin-service.yaml
+
+      # ==========================================
+      # DEPLOY APPLICATIONS
+      # ==========================================
+
+      - name: Deploy Applications
+        run: |
+          kubectl apply -n "$NAMESPACE" -f k8s/backend-deployment.yaml
+          kubectl apply -n "$NAMESPACE" -f k8s/frontend-deployment.yaml
+          kubectl apply -n "$NAMESPACE" -f k8s/admin-deployment.yaml
+
+      # ==========================================
+      # VERIFY DEPLOYMENT
+      # ==========================================
+
+      - name: Wait for Backend
+        run: |
+          kubectl rollout status deployment/freshfood-backend \
+            -n "$NAMESPACE" \
+            --timeout=300s
+
+      - name: Wait for Frontend
+        run: |
+          kubectl rollout status deployment/freshfood-frontend \
+            -n "$NAMESPACE" \
+            --timeout=300s
+
+      - name: Wait for Admin
+        run: |
+          kubectl rollout status deployment/freshfood-admin \
+            -n "$NAMESPACE" \
+            --timeout=300s
+
+      # ==========================================
+      # DEPLOYMENT SUMMARY
+      # ==========================================
+
+      - name: Deployment Summary
+        run: |
+          echo "Freshfood deployment completed."
+
+          kubectl get deployments -n "$NAMESPACE"
+          kubectl get services -n "$NAMESPACE"
+          kubectl get pods -n "$NAMESPACE"

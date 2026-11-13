@@ -1,0 +1,290 @@
+name: Freshfood DevSecOps Security Checks
+
+on:
+  workflow_call:
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ==========================================
+  # 1. FRONTEND CI
+  # ==========================================
+
+  frontend-ci:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test --if-present
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_API_URL: ""
+
+  # ==========================================
+  # 2. ADMIN CI
+  # ==========================================
+
+  admin-ci:
+    name: Admin CI
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test --if-present
+
+      - name: Build admin
+        run: npm run build
+        env:
+          VITE_API_URL: ""
+
+  # ==========================================
+  # 3. BACKEND CI
+  # ==========================================
+
+  backend-ci:
+    name: Backend CI
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate JavaScript syntax
+        run: |
+          find . -type f -name "*.js" \
+            -not -path "./node_modules/*" \
+            -print0 | xargs -0 -r -n1 node --check
+
+      - name: Run backend tests
+        run: npm run test --if-present
+
+  # ==========================================
+  # 4. GITLEAKS
+  # ==========================================
+
+  secret-scan:
+    name: Gitleaks Secret Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout complete Git history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: Install Gitleaks
+        run: go install github.com/gitleaks/gitleaks/v8@latest
+
+      - name: Scan Git history
+        run: |
+          "$(go env GOPATH)/bin/gitleaks" git . \
+            --log-opts="--all --full-history" \
+            --redact \
+            --exit-code 1
+
+  # ==========================================
+  # 5. CODEQL SAST
+  # ==========================================
+
+  codeql:
+    name: CodeQL SAST
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+
+      - name: Analyze Code
+        uses: github/codeql-action/analyze@v4
+
+  # ==========================================
+  # 6. NPM DEPENDENCY SCANNING
+  # ==========================================
+
+  dependency-scan:
+    name: npm Dependency Audit
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        directory:
+          - frontend
+          - admin
+          - backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Audit dependencies
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --audit-level=high
+
+  # ==========================================
+  # 7. CHECKOV INFRASTRUCTURE SCANNING
+  # ==========================================
+
+  infrastructure-scan:
+    name: Checkov IaC Security
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Scan Terraform
+        run: checkov -d terraform --framework terraform
+
+      - name: Scan Kubernetes
+        run: checkov -d k8s --framework kubernetes
+
+  # ==========================================
+  # 8. DOCKER BUILD AND TRIVY
+  # ==========================================
+
+  container-security:
+    name: Docker and Trivy Security
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - component: frontend
+            dockerfile: frontend/Dockerfile
+            context: frontend
+
+          - component: admin
+            dockerfile: admin/Dockerfile
+            context: admin
+
+          - component: backend
+            dockerfile: backend/Dockerfile
+            context: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build Docker image
+        run: |
+          docker build --pull \
+            -f "${{ matrix.dockerfile }}" \
+            -t "freshfood-${{ matrix.component }}:${{ github.sha }}" \
+            "${{ matrix.context }}"
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: freshfood-${{ matrix.component }}:${{ github.sha }}
+          format: table
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

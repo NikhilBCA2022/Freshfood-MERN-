@@ -1,4 +1,5 @@
-import React, { useContext, useEffect, useState } from 'react'
+import { useContext, useState } from 'react'
+import PropTypes from 'prop-types'
 import './Navbar.css'
 import { assets } from '../../assets/assets'
 import { Link, useNavigate } from 'react-router-dom'
@@ -6,13 +7,13 @@ import { StoreContext } from '../../Context/StoreContext'
 
 const Navbar = ({ setShowLogin }) => {
 
-  const [menu, setMenu] = useState("home");
-  const { getTotalCartAmount, token ,setToken } = useContext(StoreContext);
-  const navigate = useNavigate();
+  const [menu, setMenu] = useState("home")
+  const { getTotalCartAmount, token, setToken } = useContext(StoreContext)
+  const navigate = useNavigate()
 
   const logout = () => {
-    localStorage.removeItem("token");
-    setToken("");
+    localStorage.removeItem("token")
+    setToken("")
     navigate('/')
   }
 
@@ -35,17 +36,19 @@ const Navbar = ({ setShowLogin }) => {
           : <div className='navbar-profile'>
             <img src={assets.profile_icon} alt="" />
             <ul className='navbar-profile-dropdown'>
-              <li onClick={()=>navigate('/myorders')}> <img src={assets.bag_icon} alt="" /> <p>Orders</p></li>
+              <li onClick={() => navigate('/myorders')}> <img src={assets.bag_icon} alt="" /> <p>Orders</p></li>
               <hr />
-              <li onClick={logout}> <img src={assets.logout_icon} alt="" /> <p>Logout</p></li> 
+              <li onClick={logout}> <img src={assets.logout_icon} alt="" /> <p>Logout</p></li>
             </ul>
           </div>
         }
-
       </div>
     </div>
   )
 }
 
+Navbar.propTypes = {
+  setShowLogin: PropTypes.func.isRequired,
+}
 
 export default Navbar

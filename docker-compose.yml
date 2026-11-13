@@ -1,0 +1,53 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: freshfood-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    expose:
+      - "4000"
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - freshfood-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+    container_name: freshfood-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - freshfood-network
+
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+    container_name: freshfood-admin
+    restart: unless-stopped
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    networks:
+      - freshfood-network
+
+volumes:
+  backend_uploads:
+
+networks:
+  freshfood-network:
+    driver: bridge

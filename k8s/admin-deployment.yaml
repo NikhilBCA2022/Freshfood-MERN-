@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freshfood-admin
+  namespace: freshfood
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: freshfood-admin
+  template:
+    metadata:
+      labels:
+        app: freshfood-admin
+    spec:
+      containers:
+        - name: admin
+          image: REPLACE_WITH_ADMIN_ECR_IMAGE
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
