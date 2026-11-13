@@ -128,6 +128,10 @@ jobs:
   # 4. GITLEAKS
   # ==========================================
 
+    # ==========================================
+  # 4. GITLEAKS
+  # ==========================================
+
   secret-scan:
     name: Gitleaks Secret Scanning
     runs-on: ubuntu-latest
@@ -139,21 +143,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: stable
-          cache: false
-
-      - name: Install Gitleaks
-        run: go install github.com/gitleaks/gitleaks/v8@latest
-
-      - name: Scan Git history
+      - name: Scan Git history with Gitleaks
         run: |
-          "$(go env GOPATH)/bin/gitleaks" git . \
-            --log-opts="--all --full-history" \
-            --redact \
-            --exit-code 1
+          docker run --rm \
+            -v "$PWD:/repo" \
+            -w /repo \
+            zricethezav/gitleaks:v8.30.1 \
+            detect --source=/repo --verbose
 
   # ==========================================
   # 5. CODEQL SAST
