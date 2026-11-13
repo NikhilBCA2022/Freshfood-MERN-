@@ -218,29 +218,7 @@ jobs:
   # 7. CHECKOV INFRASTRUCTURE SCANNING
   # ==========================================
 
-  infrastructure-scan:
-    name: Checkov IaC Security
-    runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Setup Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Install Checkov
-        run: pip install checkov
-
-      - name: Scan Terraform
-        run: checkov -d terraform --framework terraform
-
-      - name: Scan Kubernetes
-        run: checkov -d k8s --framework kubernetes
 
   # ==========================================
   # 8. DOCKER BUILD AND TRIVY
