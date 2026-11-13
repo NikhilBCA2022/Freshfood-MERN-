@@ -1,0 +1,31 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: freshfood-github-deployer
+  namespace: freshfood
+rules:
+  - apiGroups:
+      - secrets-store.csi.x-k8s.io
+    resources:
+      - secretproviderclasses
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: freshfood-github-deployer
+  namespace: freshfood
+subjects:
+  - kind: Group
+    name: freshfood-deployer
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: freshfood-github-deployer
+  apiGroup: rbac.authorization.k8s.io

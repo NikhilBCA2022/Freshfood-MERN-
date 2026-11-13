@@ -71,9 +71,10 @@ resource "aws_iam_user_policy" "github_deploy" {
 # ==========================================================
 
 resource "aws_eks_access_entry" "github_deploy" {
-  cluster_name  = aws_eks_cluster.main.name
-  principal_arn = aws_iam_user.github_deploy.arn
-  type          = "STANDARD"
+  cluster_name      = aws_eks_cluster.main.name
+  principal_arn     = aws_iam_user.github_deploy.arn
+  kubernetes_groups = ["freshfood-deployer"]
+  type              = "STANDARD"
 }
 
 # ==========================================================
