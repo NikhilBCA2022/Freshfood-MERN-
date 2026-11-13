@@ -44,7 +44,8 @@ resource "aws_iam_user_policy" "github_deploy" {
           "ecr:CompleteLayerUpload",
           "ecr:InitiateLayerUpload",
           "ecr:PutImage",
-          "ecr:UploadLayerPart"
+          "ecr:UploadLayerPart",
+          "ecr:BatchGetImage"
         ]
 
         Resource = [
